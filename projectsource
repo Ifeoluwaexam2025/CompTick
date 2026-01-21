@@ -1,0 +1,167 @@
+You are a senior backend engineer.
+
+Generate a fully working Node.js backend project using Express and PostgreSQL,
+following EXACTLY the project structure below and respecting all constraints.
+
+====================================
+PROJECT OVERVIEW
+====================================
+Project Name: Digital Service Request Management System (DSRMS)
+
+Purpose:
+An API-first backend system that allows users to register, authenticate,
+and create/manage service requests with role-based access, status tracking,
+and audit logging.
+
+====================================
+TECH STACK
+====================================
+- Node.js
+- Express.js
+- PostgreSQL
+- JWT authentication
+- bcrypt for password hashing
+- Jest + Supertest for testing
+- dotenv for configuration
+
+====================================
+DATABASE LOGIC (MUST FOLLOW)
+====================================
+Tables:
+1. users
+   - id (UUID, PK)
+   - email (unique)
+   - password_hash
+   - role (USER, ADMIN)
+   - is_active
+   - created_at
+   - updated_at
+
+2. service_requests
+   - id (UUID, PK)
+   - title
+   - description
+   - category
+   - priority (LOW, MEDIUM, HIGH)
+   - status (OPEN, IN_PROGRESS, RESOLVED)
+   - created_by (FK → users.id)
+   - assigned_to (FK → users.id, nullable)
+   - created_at
+   - updated_at
+
+3. request_audits
+   - id (UUID, PK)
+   - request_id (FK → service_requests.id)
+   - changed_by (FK → users.id)
+   - old_status
+   - new_status
+   - note
+   - changed_at
+
+Business rules:
+- Only ADMIN can change request status
+- Status flow: OPEN → IN_PROGRESS → RESOLVED
+- Users can only modify their own requests
+- All status changes must be logged in request_audits
+
+====================================
+PROJECT STRUCTURE (DO NOT CHANGE)
+====================================
+digital-service-platform/
+│
+├── src/
+│   ├── app.js
+│   ├── index.js
+│   │
+│   ├── config/
+│   │   ├── database.js
+│   │   ├── env.js
+│   │
+│   ├── modules/
+│   │   ├── auth/
+│   │   │   ├── auth.controller.js
+│   │   │   ├── auth.service.js
+│   │   │   ├── auth.routes.js
+│   │   │   └── auth.validation.js
+│   │   │
+│   │   ├── requests/
+│   │   │   ├── request.controller.js
+│   │   │   ├── request.service.js
+│   │   │   ├── request.routes.js
+│   │   │   ├── request.rules.js
+│   │   │   └── request.validation.js
+│   │
+│   ├── middleware/
+│   │   ├── auth.middleware.js
+│   │   ├── role.middleware.js
+│   │   └── error.middleware.js
+│   │
+│   └── utils/
+│       ├── jwt.js
+│       ├── password.js
+│       └── logger.js
+│
+├── tests/
+│   ├── unit/
+│   │   ├── auth.service.test.js
+│   │   └── request.rules.test.js
+│   │
+│   ├── integration/
+│   │   ├── auth.api.test.js
+│   │   └── request.api.test.js
+│   │
+│   └── setup.js
+│
+├── migrations/
+│   ├── 001_create_schema.sql
+│   
+│   
+│
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+├── package.json
+└── README.md
+
+====================================
+FUNCTIONAL REQUIREMENTS
+====================================
+- User registration & login
+- JWT-based authentication
+- Role-based authorization
+- CRUD for service requests
+- Status validation rules
+- Audit logging for status changes
+- Global error handling
+- Input validation
+- Pagination for listing requests
+
+====================================
+TESTING REQUIREMENTS
+====================================
+- Use Jest + Supertest
+- Unit tests for:
+  - Authentication logic
+  - Status transition rules
+- Integration tests for:
+  - Auth endpoints
+  - Request endpoints
+- Tests must be runnable with `npm test`
+
+====================================
+OUTPUT REQUIREMENTS
+====================================
+- Generate COMPLETE, runnable code
+- Provide realistic implementations (no pseudo-code)
+- Use clean architecture and separation of concerns
+- Follow Node.js & Express best practices
+- Include example environment variables
+- Include README explaining setup, usage, and testing
+
+====================================
+IMPORTANT
+====================================
+- Do NOT simplify business rules
+- Do NOT change folder structure
+- Do NOT omit audit logging
+- Assume this is a production-quality project

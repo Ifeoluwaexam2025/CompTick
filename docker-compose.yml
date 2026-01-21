@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: DigitalCloudService
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ubuntu
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=ubuntu
+      - DB_NAME=DigitalCloudService
+      - DB_HOST=db       
+      - DB_PORT=5432
+      - JWT_SECRET=changeme
+    depends_on:
+      - db
+
+volumes:
+  db_data:
