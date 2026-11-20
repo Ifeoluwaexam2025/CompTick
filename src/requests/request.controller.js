@@ -43,4 +43,15 @@ async function listRequests(req, res, next) {
     }
 }
 
-module.exports = { createRequest, updateRequest, changeStatus, listRequests };
+async function listAudits(req, res, next) {
+    try {
+        validateRequestId(req.params.id);
+        const pagination = parsePagination(req.query);
+        const audits = await requestService.listAudits(req.params.id, req.user, pagination);
+        res.json(audits);
+    } catch (err) {
+        next(err);
+    }
+}
+
+module.exports = { createRequest, updateRequest, changeStatus, listRequests, listAudits };

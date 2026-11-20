@@ -45,10 +45,13 @@ Local base URL · `http://127.0.0.1:3000`
 | `POST /api/requests` | Authenticated | 201 with the new `OPEN` request |
 | `PUT /api/requests/:id` | Request owner | 200 with updated title, description, category and priority |
 | `PATCH /api/requests/:id/status` | Administrator | 200 with the updated request |
+| `GET /api/requests/:id/audits` | Administrator | 200 with a page of status changes for the request |
 
 Send JSON for writes and `Authorization: Bearer $TOKEN` on protected routes. Registration requires an email and a password with at least 8 characters and at most 72 UTF-8 bytes. Request creation and editing require nonblank title, description and category and a priority of `LOW`, `MEDIUM` or `HIGH`. Status updates require a supported status and accept an optional note of up to 2,000 characters.
 
 Listing accepts `page` and `limit`, which default to 1 and 10. The maximum limit is 100. Results are ordered by newest creation time, with descending UUID as a tie-breaker. The response remains a JSON array. Inserts between page loads can shift offset-based results.
+
+Audit history accepts the same `page` and `limit` parameters. It returns a JSON array sorted by descending `changed_at`, then descending audit `id` for timestamp ties. Each entry contains `id`, `old_status`, `new_status`, `changed_at`, `changed_by` (the administrator’s UUID) and `note` (which may be empty or null). An existing request with no entries on the requested page returns `[]`. A valid UUID for a missing request returns 404.
 
 Errors have the shape `{"message":"Invalid credentials"}`. Common statuses are 400 for invalid input, 401 for invalid credentials or tokens, 403 for insufficient role, 404 for a missing or unowned resource, and 409 for duplicate email or a disallowed transition. Unexpected errors return a generic 500 response.
 
@@ -96,6 +99,13 @@ curl -fsS -X PATCH "http://127.0.0.1:3000/api/requests/$REQUEST_ID/status" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"status":"IN_PROGRESS","note":"Investigation started"}'
+```
+
+To read the status history for that request:
+
+```bash
+curl -fsS "http://127.0.0.1:3000/api/requests/$REQUEST_ID/audits?page=1&limit=10" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ## Run locally
@@ -168,13 +178,13 @@ Wait for `pg_isready` to report that PostgreSQL is accepting connections before 
 
 With an existing PostgreSQL server, create a separate test database and set its connection URI in `.env.test`. The test role needs permission to create schemas in that database. A shell or CI value for `TEST_DATABASE_URL` takes precedence over the file. Integration suites create and remove randomly named schemas and apply the application migrations. `npm run test:unit` and `npm run lint` work without PostgreSQL.
 
-Use `npm run test:integration` for the HTTP suites. Node.js 26.13.0 and PostgreSQL 14.25 were used for local verification. The full run passed 27 tests across five suites. The checks include forced audit rollback, concurrent status changes, ownership, pagination, malformed JSON, and authentication failures. A separate smoke check applied migrations twice to the original schema, preserved existing data, and started the API successfully.
+Use `npm run test:integration` for the HTTP suites. Node.js 26.13.0 and PostgreSQL 14.25 were used for local verification. The full run passed 33 tests across five suites. The checks include forced audit rollback, concurrent status changes, audit history access and ordering, ownership, pagination, malformed JSON, and authentication failures. A separate smoke check applied migrations twice to the original schema, preserved existing data, and started the API successfully.
 
 ## Limitations and next steps
 
-The API currently exposes a liveness check and stores audit history in PostgreSQL. Audit retrieval, assignment, deletion and token refresh have no public endpoints. Login has no application-level rate limiting. The application and migrations share database credentials in the local Compose stack.
+The API currently exposes a liveness check and stores audit history in PostgreSQL. Assignment, deletion and token refresh have no public endpoints. Login has no application-level rate limiting. The application and migrations share database credentials in the local Compose stack.
 
-A useful next feature is a paginated, administrator-only audit history endpoint. It would let reviewers follow a request’s lifecycle through the API, with tests for role enforcement, chronological order and pagination.
+Audit history uses offset pagination, so new status changes can shift entries between page loads.
 
 ## Author
 

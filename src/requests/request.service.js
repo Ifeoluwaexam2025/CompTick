@@ -17,9 +17,13 @@ async function updateRequest(id, data, user) {
     return request;
 }
 
-async function changeStatus(id, { status, note = '' }, user) {
+function requireAdmin(user) {
     requireActor(user);
     if (user.role !== 'ADMIN') throw new HttpError(403, 'Forbidden');
+}
+
+async function changeStatus(id, { status, note = '' }, user) {
+    requireAdmin(user);
     return withTransaction(async client => {
         const request = await repository.findStatusForUpdate(client, id);
         if (!request) throw new HttpError(404, 'Request not found');
@@ -37,4 +41,11 @@ async function listRequests(user, pagination) {
     return repository.listRequests(pagination, user.role === 'USER' ? user.id : undefined);
 }
 
-module.exports = { createRequest: repository.createRequest, updateRequest, changeStatus, listRequests };
+async function listAudits(id, user, pagination) {
+    requireAdmin(user);
+    const audits = await repository.listAudits(id, pagination);
+    if (audits === null) throw new HttpError(404, 'Request not found');
+    return audits;
+}
+
+module.exports = { createRequest: repository.createRequest, updateRequest, changeStatus, listRequests, listAudits };

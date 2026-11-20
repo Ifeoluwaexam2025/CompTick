@@ -163,3 +163,100 @@ test('allows a single winning transition when two administrators submit the same
     expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
     expect((await db.query('SELECT id FROM request_audits WHERE request_id = $1', [item.id])).rowCount).toBe(1);
 });
+
+function getAudits(id, actor = admin, query = {}) {
+    return request(app).get(`/api/requests/${id}/audits`)
+        .set('Authorization', bearer(actor)).query(query);
+}
+
+test('returns only the requested audit fields and only for the requested service request', async () => {
+    const item = await createRequest();
+    const unrelated = await createRequest(other);
+    const secondAdmin = await createActor('ADMIN');
+    await setStatus(unrelated.id, 'IN_PROGRESS').expect(200);
+    await setStatus(item.id, 'IN_PROGRESS', admin, 'Investigation started').expect(200);
+    await setStatus(item.id, 'RESOLVED', secondAdmin).expect(200);
+
+    const { rows: [older, newer] } = await db.query(
+        'SELECT id, changed_at FROM request_audits WHERE request_id = $1 ORDER BY changed_at, id',
+        [item.id]
+    );
+    await getAudits(item.id).expect(200, [
+        {
+            id: newer.id,
+            old_status: 'IN_PROGRESS',
+            new_status: 'RESOLVED',
+            changed_at: newer.changed_at.toISOString(),
+            changed_by: secondAdmin.id,
+            note: ''
+        },
+        {
+            id: older.id,
+            old_status: 'OPEN',
+            new_status: 'IN_PROGRESS',
+            changed_at: older.changed_at.toISOString(),
+            changed_by: admin.id,
+            note: 'Investigation started'
+        }
+    ]);
+});
+
+test('returns an empty array for an existing request without audit history', async () => {
+    const item = await createRequest();
+    await getAudits(item.id).expect(200, []);
+});
+
+test('rejects an invalid audit request UUID and reports a missing request', async () => {
+    await getAudits('bad-id').expect(400, { message: 'Invalid request ID' });
+    await getAudits(randomUUID()).expect(404, { message: 'Request not found' });
+});
+
+test('requires a valid token and a current administrator role to read audit history', async () => {
+    const item = await createRequest();
+    const path = `/api/requests/${item.id}/audits`;
+    const expired = jwt.sign({ id: admin.id }, process.env.JWT_SECRET, { expiresIn: -1 });
+    await request(app).get(path).expect(401);
+    await request(app).get(path).set('Authorization', 'Bearer invalid').expect(401);
+    await request(app).get(path).set('Authorization', `Bearer ${expired}`).expect(401);
+    await getAudits(item.id, owner).expect(403);
+    await getAudits(item.id, other).expect(403);
+
+    const demoted = await createActor('ADMIN');
+    await db.query("UPDATE users SET role = 'USER' WHERE id = $1", [demoted.id]);
+    await getAudits(item.id, demoted).expect(403);
+    await expect(service.listAudits(item.id, owner, { limit: 10, offset: 0 }))
+        .rejects.toMatchObject({ status: 403 });
+});
+
+test('paginates audits newest first with descending UUID for equal timestamps', async () => {
+    const item = await createRequest();
+    const ids = [
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+        '00000000-0000-4000-8000-000000000003'
+    ];
+    await db.query(
+        `INSERT INTO request_audits (id, request_id, changed_by, old_status, new_status, changed_at)
+         VALUES ($1, $4, $5, 'IN_PROGRESS', 'RESOLVED', '2025-01-02'),
+                ($2, $4, $5, 'OPEN', 'IN_PROGRESS', '2025-01-02'),
+                ($3, $4, $5, 'OPEN', 'IN_PROGRESS', '2025-01-01')`,
+        [...ids, item.id, admin.id]
+    );
+
+    const first = await getAudits(item.id, admin, { page: 1, limit: 1 }).expect(200);
+    const second = await getAudits(item.id, admin, { page: 2, limit: 1 }).expect(200);
+    const third = await getAudits(item.id, admin, { page: 3, limit: 1 }).expect(200);
+    expect(first.body.map(audit => audit.id)).toEqual([ids[1]]);
+    expect(second.body.map(audit => audit.id)).toEqual([ids[0]]);
+    expect(third.body.map(audit => audit.id)).toEqual([ids[2]]);
+    expect(third.body[0].note).toBeNull();
+    await getAudits(item.id, admin, { page: 4, limit: 1 }).expect(200, []);
+});
+
+test('rejects invalid audit pagination and accepts the maximum page size', async () => {
+    const item = await createRequest();
+    for (const query of [{ page: 0 }, { page: '1.5' }, { limit: 0 }, { limit: 101 }, { limit: [1, 2] }]) {
+        await getAudits(item.id, admin, query).expect(400);
+    }
+    await getAudits(item.id, admin, { limit: 100 }).expect(200, []);
+});

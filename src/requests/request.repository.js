@@ -51,4 +51,26 @@ async function listRequests({ limit, offset }, ownerId) {
     return rows;
 }
 
-module.exports = { createRequest, updateOwnedRequest, findStatusForUpdate, updateStatus, insertAudit, listRequests };
+async function listAudits(requestId, { limit, offset }) {
+    const { rows } = await db.query(
+        `SELECT audit_page.*
+         FROM service_requests AS request
+         LEFT JOIN LATERAL (
+             SELECT id, old_status, new_status, changed_at, changed_by, note
+             FROM request_audits
+             WHERE request_id = request.id
+             ORDER BY changed_at DESC, id DESC
+             LIMIT $2 OFFSET $3
+         ) AS audit_page ON TRUE
+         WHERE request.id = $1
+         ORDER BY audit_page.changed_at DESC, audit_page.id DESC`,
+        [requestId, limit, offset]
+    );
+    // The left join yields a null audit row for an existing request with an empty page.
+    if (rows.length === 0) return null;
+    return rows[0].id === null ? [] : rows;
+}
+
+module.exports = {
+    createRequest, updateOwnedRequest, findStatusForUpdate, updateStatus, insertAudit, listRequests, listAudits
+};
