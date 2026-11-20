@@ -6,7 +6,7 @@ function generateToken(payload) {
 }
 
 function verifyToken(token) {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
 }
 
 module.exports = { generateToken, verifyToken };

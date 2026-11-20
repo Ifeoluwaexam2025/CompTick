@@ -1,9 +1,8 @@
 const authService = require('./auth.service');
-const { validateRegister, validateLogin } = require('./auth.validation');
+const { validateLogin } = require('./auth.validation');
 
 async function register(req, res, next) {
     try {
-        validateRegister(req.body);
         const user = await authService.registerUser(req.body);
         res.status(201).json({ id: user.id, email: user.email, role: user.role });
     } catch (err) {

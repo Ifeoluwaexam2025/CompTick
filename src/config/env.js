@@ -1,11 +1,16 @@
 require('dotenv').config();
 
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET) < 32) {
+    throw new Error('JWT_SECRET must be set to at least 32 bytes');
+}
+
 module.exports = {
-    PORT: process.env.PORT || 3000,
+    PORT: Number(process.env.PORT || 3000),
     DB_USER: process.env.DB_USER,
     DB_HOST: process.env.DB_HOST,
     DB_NAME: process.env.DB_NAME,
     DB_PASSWORD: process.env.DB_PASSWORD,
     DB_PORT: process.env.DB_PORT || 5432,
-    JWT_SECRET: process.env.JWT_SECRET || 'changeme'
+    JWT_SECRET
 };

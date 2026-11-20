@@ -7,11 +7,11 @@ const pool = new Pool({
     database: env.DB_NAME,
     password: env.DB_PASSWORD,
     port: env.DB_PORT,
+    connectionTimeoutMillis: 5000
 });
 
-// If you see "relation 'users' does not exist", ensure:
-// 1. You ran migrations on the correct database.
-// 2. Your DB_NAME in .env matches the database you migrated.
-// 3. Your app is connecting to the correct DB.
+pool.on('error', error => {
+    console.error('Idle database connection failed', { code: error.code, message: error.message });
+});
 
 module.exports = pool;

@@ -1,3 +1,4 @@
+require('../setup');
 const request = require('supertest');
 const app = require('../../src/app');
 
@@ -9,4 +10,8 @@ describe('Health API', () => {
     expect(res.body).toHaveProperty('timestamp');
     expect(new Date(res.body.timestamp).toString()).not.toBe('Invalid Date');
   });
+});
+
+test('unknown routes use the JSON error format', async () => {
+    await request(app).get('/api/missing').expect(404, { message: 'Route not found' });
 });

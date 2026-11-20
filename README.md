@@ -1,338 +1,181 @@
-# Digital Service Request Management System (DSRMS)
+# Digital Service Request Management System
 
-**A REST API for managing digital service requests, built with Node.js, Express and PostgreSQL.**
+DSRMS is a REST API for submitting and tracking digital service requests. Users can create and edit their own requests. Administrators can review all requests and advance them through a workflow that records who made each status change.
 
-[Source Code](https://github.com/Ifeoluwaexam2025/Digital-CloudService)
+I built this project as an Information Technology Engineering portfolio project to practice backend development, relational data modeling, authorization and automated testing. [Digital Cloud Service on GitHub](https://github.com/Ifeoluwaexam2025/Digital-CloudService)
 
-## Overview
+**Stack** · Node.js 26 LTS, Express 4, PostgreSQL, CommonJS, bcrypt, JWT, Jest, Supertest, Docker Compose and GitHub Actions. [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
 
-DSRMS is a backend software project exploring how service requests can be created, managed and tracked through a structured workflow.
+## Architecture
 
-The application supports user accounts, JWT-based authentication, role-based permissions, request management and audit records.
-
-I built this project to develop practical experience with backend architecture, relational databases, API design, authentication and automated testing.
-
-**Technology:** Node.js · Express · PostgreSQL · JavaScript · JWT · bcrypt · Jest · Supertest · Docker
-
-## Features
-
-### Authentication and authorization
-
-- User registration and login
-- Password hashing using bcrypt
-- JWT authentication for protected endpoints
-- USER and ADMIN roles
-- Request ownership checks for editing
-
-### Service request management
-
-- Create service requests with a title, description, category and priority
-- Update requests owned by the authenticated user
-- List requests with page and limit parameters
-- Restrict ordinary users to their own requests
-- Allow administrators to change request status
-
-### Workflow and audit history
-
-Requests follow this status progression:
-
-`OPEN → IN_PROGRESS → RESOLVED`
-
-Status changes are restricted to administrators and recorded in the `request_audits` database table.
-
-Each audit record includes the request, previous status, new status, acting user, optional note and timestamp.
-
-### Database and development tooling
-
-- PostgreSQL tables linked through foreign keys
-- Parameterized queries for database operations
-- Schema constraints for valid roles, priorities and statuses
-- Database-generated UUIDs and timestamps
-- Docker configuration for the application and database
-- Jest and Supertest for automated API testing
-
-## API endpoints
-
-Base URL for local development: `http://localhost:3000`
-
-| Method | Endpoint | Purpose | Authentication |
-|---|---|---|---|
-| GET | `/api/health` | Check API health | Public |
-| POST | `/api/auth/register` | Register a user | Public |
-| POST | `/api/auth/login` | Log in and receive a JWT | Public |
-| GET | `/api/requests` | List accessible requests | JWT |
-| POST | `/api/requests` | Create a request | JWT |
-| PUT | `/api/requests/:id` | Update an owned request | JWT |
-| PATCH | `/api/requests/:id/status` | Change request status | ADMIN |
-
-**Note:** A delete endpoint is not currently implemented.
-
-## Example API workflow
-
-The examples below illustrate the intended request flow. They require a running API and initialized PostgreSQL database.
-
-### 1. Register a user
-
-```bash
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "demo@example.com",
-    "password": "example-password",
-    "role": "USER"
-  }'
+```text
+HTTP request → Express route → authentication and role checks
+            → controller and validation → service → repository → PostgreSQL
 ```
 
-### 2. Log in
+- `src/app.js` configures Express and the JSON API. `src/index.js` checks the database schema before opening the HTTP port.
+- `src/modules/auth/` handles account creation and login. Public registration accepts an omitted role or `USER`, and the SQL insert fixes the role to `USER`. Bcrypt hashes the password before persistence.
+- `src/middleware/` verifies the signed credential, loads the current active account and enforces route permissions. Login issues an HS256 JWT valid for one hour. Fetching the role from PostgreSQL on each protected request applies role changes and account deactivation to subsequent requests at the cost of one read.
+- `src/requests/` separates input validation, workflow rules and SQL. The owner predicate is part of the edit query. A missing or unowned request returns the same 404 response, so edits reveal no ownership information.
+- `src/config/` manages the PostgreSQL pool, explicit transactions and versioned migrations.
+
+## Database model and workflow
+
+| Table | Stored data |
+| --- | --- |
+| `users` | UUID, unique email, bcrypt hash, role, active flag and timestamps |
+| `service_requests` | UUID, title, description, category, priority, status, owner, optional assignee and timestamps |
+| `request_audits` | UUID, request, acting user, old status, new status, note and timestamp |
+| `schema_migrations` | Applied migration filenames and timestamps |
+
+Foreign keys link requests to users and audits to both. The database constrains roles, priorities and request statuses, and triggers maintain modification timestamps.
+
+Requests start at `OPEN`. An administrator can advance a request through `OPEN → IN_PROGRESS → RESOLVED`. The service locks the request row with `SELECT … FOR UPDATE`, validates the current state, and writes the status and audit using the same PostgreSQL connection. Both writes commit together. An audit failure rolls back the status update. A concurrent attempt waits for the row lock and evaluates the transition against the newly committed status.
+
+## API
+
+Local base URL · `http://127.0.0.1:3000`
+
+| Method and path | Access | Success |
+| --- | --- | --- |
+| `GET /api/health` | Public | 200 with API liveness status and timestamp |
+| `POST /api/auth/register` | Public | 201 with account ID, email and role |
+| `POST /api/auth/login` | Public | 200 with JWT |
+| `GET /api/requests` | Authenticated | 200 with the caller’s requests, or all requests for an administrator |
+| `POST /api/requests` | Authenticated | 201 with the new `OPEN` request |
+| `PUT /api/requests/:id` | Request owner | 200 with updated title, description, category and priority |
+| `PATCH /api/requests/:id/status` | Administrator | 200 with the updated request |
+
+Send JSON for writes and `Authorization: Bearer $TOKEN` on protected routes. Registration requires an email and a password with at least 8 characters and at most 72 UTF-8 bytes. Request creation and editing require nonblank title, description and category and a priority of `LOW`, `MEDIUM` or `HIGH`. Status updates require a supported status and accept an optional note of up to 2,000 characters.
+
+Listing accepts `page` and `limit`, which default to 1 and 10. The maximum limit is 100. Results are ordered by newest creation time, with descending UUID as a tie-breaker. The response remains a JSON array. Inserts between page loads can shift offset-based results.
+
+Errors have the shape `{"message":"Invalid credentials"}`. Common statuses are 400 for invalid input, 401 for invalid credentials or tokens, 403 for insufficient role, 404 for a missing or unowned resource, and 409 for duplicate email or a disallowed transition. Unexpected errors return a generic 500 response.
+
+### Example workflow
+
+Register a development account.
 
 ```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "demo@example.com",
-    "password": "example-password"
-  }'
+curl -sS http://127.0.0.1:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@example.com","password":"example-password"}'
 ```
 
-A successful login returns a JWT:
+Example response.
 
 ```json
 {
-  "token": "<jwt-token>"
+  "id": "f004ec3d-da2c-48ae-b4c7-5213dccd8de6",
+  "email": "demo@example.com",
+  "role": "USER"
 }
 ```
 
-### 3. Create a service request
-
-Replace `<jwt-token>` with the token returned at login.
+Log in, extract the JWT, and create a request.
 
 ```bash
-curl -X POST http://localhost:3000/api/requests \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <jwt-token>" \
-  -d '{
-    "title": "Unable to access service portal",
-    "description": "The portal does not load after login.",
-    "category": "ACCESS",
-    "priority": "HIGH"
-  }'
+TOKEN=$(curl -fsS http://127.0.0.1:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@example.com","password":"example-password"}' |
+  node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).token')
+
+curl -fsS http://127.0.0.1:3000/api/requests \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Portal access","description":"Cannot sign in","category":"ACCESS","priority":"HIGH"}'
+
+curl -fsS 'http://127.0.0.1:3000/api/requests?page=1&limit=10' \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-New requests start with the status `OPEN`.
-
-### 4. Retrieve requests
+An administrator can send the following request using an authorized token and an existing request UUID.
 
 ```bash
-curl "http://localhost:3000/api/requests?page=1&limit=10" \
-  -H "Authorization: Bearer <jwt-token>"
+curl -fsS -X PATCH "http://127.0.0.1:3000/api/requests/$REQUEST_ID/status" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"IN_PROGRESS","note":"Investigation started"}'
 ```
 
-Ordinary users can retrieve their own requests. Administrators are intended to retrieve requests across users.
+## Run locally
 
-### 5. Update request status
-
-An administrator can move a request from `OPEN` to `IN_PROGRESS`, then to `RESOLVED`.
-
-```bash
-curl -X PATCH \
-  http://localhost:3000/api/requests/<request-id>/status \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <admin-jwt-token>" \
-  -d '{
-    "status": "IN_PROGRESS",
-    "note": "Investigation started"
-  }'
-```
-
-The service enforces the supported status sequence and creates an audit record for changes.
-
-## Project architecture
-
-The codebase separates HTTP routing, request handling, business logic and database access.
-
-```text
-src/
-├── app.js
-├── index.js
-├── config/
-├── middleware/
-├── modules/
-│   └── auth/
-│       ├── auth.routes.js
-│       ├── auth.controller.js
-│       ├── auth.service.js
-│       └── auth.validation.js
-├── requests/
-│   ├── request.routes.js
-│   ├── request.controller.js
-│   ├── request.service.js
-│   └── request.validation.js
-└── utils/
-
-migrations/
-└── 001_create_schema.sql
-
-Dockerfile
-docker-compose.yml
-package.json
-```
-
-### Request processing flow
-
-`HTTP Request → Route → Authentication/Authorization → Controller → Validation → Service → PostgreSQL`
-
-**Routes** define the available API endpoints.
-
-**Middleware** verifies JWTs and enforces access permissions.
-
-**Controllers** handle incoming requests, validation and responses.
-
-**Services** implement request creation, updates, status changes and database queries.
-
-**PostgreSQL** stores users, service requests and audit records.
-
-This separation makes it easier to locate functionality and test individual parts of the backend.
-
-## Database design
-
-The database uses three main tables.
-
-| Table | Purpose |
-|---|---|
-| `users` | Account information, password hashes and roles |
-| `service_requests` | Request details, priority, status, ownership and assignment fields |
-| `request_audits` | History of status changes and the responsible user |
-
-Foreign keys connect requests to users and audit records to their corresponding requests.
-
-The schema also includes indexes and database triggers that update modification timestamps.
-
-## Testing
-
-The project uses:
-
-- **Jest** as the JavaScript testing framework
-- **Supertest** for HTTP endpoint testing
-
-To run the test suite:
-
-```bash
-npm test
-```
-
-The testing setup is intended to cover authentication, authorization, service-request operations and error scenarios.
-
-A verified coverage percentage and automated CI results have not yet been published.
-
-## Local setup
-
-### Requirements
-
-- Node.js and npm
-- PostgreSQL
-- Docker and Docker Compose (optional)
-
-### Install dependencies
+Install Node.js 26 and PostgreSQL 14. Create an empty database and a PostgreSQL user with permission to create tables and related objects in its schema. Then run:
 
 ```bash
 git clone https://github.com/Ifeoluwaexam2025/Digital-CloudService.git
 cd Digital-CloudService
-npm install
-```
-
-### Configure the environment
-
-Copy the example environment file:
-
-```bash
+npm ci
 cp .env.example .env
+node -p 'require("node:crypto").randomBytes(32).toString("hex")'
 ```
 
-Update the database connection settings and JWT secret for your environment.
-
-The example values are for local development only.
-
-### Initialize the database
-
-Create the configured PostgreSQL database and apply:
-
-`migrations/001_create_schema.sql`
-
-### Start the application
+Put the generated value in `JWT_SECRET` and fill in the database connection settings in `.env`.
 
 ```bash
+npm run migrate
 npm start
+curl -fsS http://127.0.0.1:3000/api/health
 ```
 
-For development with automatic restarting:
+Use `npm run dev` for automatic restart during development. Run migrations explicitly when updating the schema. The migration runner takes an advisory lock and records applied files transactionally. The bootstrap migration supports the original DSRMS schema and preserves its rows. Keep future changes in new numbered SQL files. For a database with custom schema changes, verify the schema before adoption. For previously running installations, review existing administrator accounts and set a new JWT signing secret before exposing the updated API. Existing accounts with passwords longer than 72 UTF-8 bytes need an operator-assisted password reset.
+
+| Variable | Purpose |
+| --- | --- |
+| `PORT` | Local HTTP port, defaults to 3000 |
+| `DB_HOST`, `DB_PORT` | PostgreSQL host and port, with port 5432 by default |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Target database and credentials |
+| `JWT_SECRET` | Random signing secret, at least 32 bytes |
+| `TEST_DATABASE_URL` | PostgreSQL connection URI for a dedicated test database |
+
+### Docker Compose
+
+Copy `.env.example` to `.env`, set a database user, a database name, a database password and a random JWT secret, then run:
 
 ```bash
-npm run dev
+docker compose up --build
 ```
 
-The application is configured to run on port 3000 by default.
+Compose waits for healthy PostgreSQL, runs migrations as a one-shot service, and starts the API after a successful migration. The database uses the `db_data` named volume. Existing volumes retain the credentials and database created when they were initialized. Use matching `DB_*` values with an existing volume. `docker compose down` keeps the named volume. Docker startup is currently unverified on the machine used for the backend checks.
 
-**Current setup limitation:** The Docker startup process and declared dependencies require fixes before a reliable one-command setup can be guaranteed. See the improvement roadmap below.
+### Provision a development administrator
 
-## Engineering decisions
+Register the intended account first. A trusted database operator can promote that account using an authenticated PostgreSQL session connected to the configured database. With Compose, open that session using `docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`. Inside PostgreSQL, use the intended account’s email:
 
-### Separate controllers from services
+```sql
+UPDATE users
+SET role = 'ADMIN'
+WHERE email = 'demo@example.com' AND is_active = TRUE
+RETURNING id, email, role;
+```
 
-Request handlers and database operations are implemented in separate modules.
+A successful update returns one row. Use the account’s JWT for administrator calls. Public requests have no role-management endpoint.
 
-This makes the responsibilities clearer and helps prevent HTTP-specific code from becoming mixed with database operations.
+## Tests and verification
 
-### Use JWTs for API authentication
+The full suite needs a dedicated PostgreSQL test database. For local testing with Docker, start a disposable database on port 55432:
 
-Protected endpoints verify a token before permitting access to service requests.
+```bash
+docker run --rm -d --name dsrms-test-db -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=dsrms_test -e POSTGRES_PASSWORD=disposable-test \
+  -e POSTGRES_DB=dsrms_test postgres:14
+cp -n .env.test.example .env.test
+docker exec dsrms-test-db pg_isready -h 127.0.0.1 -U dsrms_test -d dsrms_test
+npm test
+```
 
-Role checks add authorization rules for administrator-only operations.
+Wait for `pg_isready` to report that PostgreSQL is accepting connections before running the tests. To remove the disposable container after testing, run `docker stop dsrms-test-db`.
 
-### Track request status changes
+With an existing PostgreSQL server, create a separate test database and set its connection URI in `.env.test`. The test role needs permission to create schemas in that database. A shell or CI value for `TEST_DATABASE_URL` takes precedence over the file. Integration suites create and remove randomly named schemas and apply the application migrations. `npm run test:unit` and `npm run lint` work without PostgreSQL.
 
-An audit table provides a record of changes to request status.
+Use `npm run test:integration` for the HTTP suites. Node.js 26.13.0 and PostgreSQL 14.25 were used for local verification. The full run passed 27 tests across five suites. The checks include forced audit rollback, concurrent status changes, ownership, pagination, malformed JSON, and authentication failures. A separate smoke check applied migrations twice to the original schema, preserved existing data, and started the API successfully.
 
-This is useful when understanding who changed a request and how it moved through its workflow.
+## Limitations and next steps
 
-### Use PostgreSQL constraints
+The API currently exposes a liveness check and stores audit history in PostgreSQL. Audit retrieval, assignment, deletion and token refresh have no public endpoints. Login has no application-level rate limiting. The application and migrations share database credentials in the local Compose stack.
 
-The database enforces valid values for roles, statuses and priorities, in addition to application-level checks.
-
-This gives the data model another validation layer.
-
-## Limitations and improvement roadmap
-
-The project demonstrates a backend architecture but is not yet hardened for production deployment.
-
-Planned improvements include:
-
-- Preventing public registration from assigning administrator privileges
-- Fixing the request-list pagination query for all user roles
-- Making status changes and audit insertion atomic through database transactions
-- Improving Docker startup and migration handling
-- Resolving dependency configuration issues
-- Expanding automated test coverage and publishing verified results
-- Adding a CI pipeline for automated validation
-- Strengthening production security configuration and error handling
-
-## What I learned
-
-This project helped me practice:
-
-- Structuring an Express application into responsibilities
-- Designing REST endpoints and authorization rules
-- Modeling related data in PostgreSQL
-- Implementing JWT authentication and password hashing
-- Tracking changes through audit records
-- Thinking about validation, reliability and testing
-- Working with container-based development environments
-
-It also highlighted the importance of reviewing implementation details instead of assuming a feature is reliable simply because its code exists.
+A useful next feature is a paginated, administrator-only audit history endpoint. It would let reviewers follow a request’s lifecycle through the API, with tests for role enforcement, chronological order and pagination.
 
 ## Author
 
-**Ifeoluwa Ogungbemi**
-
-Information Technology Engineering Student — Oulu University of Applied Sciences
-
-[GitHub](https://github.com/Ifeoluwaexam2025) · [LinkedIn](https://www.linkedin.com/in/ifeoluwa-ogungbemi-39083b363)
+**Ifeoluwa Ogungbemi** · Information Technology Engineering student, Oulu University of Applied Sciences. [GitHub](https://github.com/Ifeoluwaexam2025) · [LinkedIn](https://www.linkedin.com/in/ifeoluwa-ogungbemi-39083b363)
