@@ -44,3 +44,14 @@ test('rejects malformed JSON with a sanitized response', async () => {
     await request(app).post('/api/auth/register').type('json').send('{"password":')
         .expect(400, { message: 'Malformed JSON' });
 });
+
+test('returns the current active identity with a bearer token', async () => {
+    const email = 'identity@example.com';
+    const password = 'A-test-password';
+    const account = await request(app).post('/api/auth/register').send({ email, password }).expect(201);
+    const login = await request(app).post('/api/auth/login').send({ email, password }).expect(200);
+    await request(app).get('/api/auth/me').expect(401);
+    await request(app).get('/api/auth/me')
+        .set('Authorization', `Bearer ${login.body.token}`)
+        .expect(200, { id: account.body.id, role: 'USER' });
+});

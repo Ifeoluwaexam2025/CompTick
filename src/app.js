@@ -2,9 +2,11 @@ const express = require('express');
 const HttpError = require('./utils/http-error');
 const authRoutes = require('./modules/auth/auth.routes');
 const requestRoutes = require('./requests/request.routes');
+const allowClientOrigin = require('./middleware/client-origin.middleware');
 const errorHandler = require('./middleware/error.middleware');
 
 const app = express();
+app.use('/api', allowClientOrigin);
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {

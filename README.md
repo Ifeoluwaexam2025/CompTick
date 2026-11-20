@@ -1,18 +1,58 @@
-# Digital Service Request Management System
+# CompTick — Service Request Management Platform
 
-DSRMS is a REST API for submitting and tracking digital service requests. Users can create and edit their own requests. Administrators can review all requests and advance them through a workflow that records who made each status change.
+**Track requests. Manage progress. Resolve issues.**
 
-I built this project as an Information Technology Engineering portfolio project to practice backend development, relational data modeling, authorization and automated testing. [Digital Cloud Service on GitHub](https://github.com/Ifeoluwaexam2025/Digital-CloudService)
+CompTick is a responsive React client for the Digital Cloud Service backend. Members submit, edit, and track their own service requests. Administrators review requests across the workspace, advance their status, and inspect the recorded audit trail.
 
-**Stack** · Node.js 26 LTS, Express 4, PostgreSQL, CommonJS, bcrypt, JWT, Jest, Supertest, Docker Compose and GitHub Actions. [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
+I built this project as an Information Technology Engineering portfolio project to practice full-stack development, relational data modeling, authorization and automated testing. [Digital Cloud Service on GitHub](https://github.com/Ifeoluwaexam2025/Digital-CloudService)
+
+**Frontend** · React, TypeScript, Vite, React Router, CSS, Vitest, React Testing Library and Playwright.
+
+**Backend** · Node.js 26 LTS, Express 4, PostgreSQL, CommonJS, bcrypt, JWT, Jest, Supertest, Docker Compose and GitHub Actions. [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
+
+## Run CompTick locally
+
+Install Node.js 26, npm and PostgreSQL. The [backend setup](#run-the-backend) explains how to create the database, configure a JWT signing secret in the repository root’s `.env`, and apply migrations. Start the API on port 3000 with `npm start` in the repository root. In another terminal, run:
+
+```bash
+cd client
+npm ci
+npm run dev
+```
+
+Open the Vite URL printed in the terminal, usually `http://localhost:5173`. The dev server forwards browser requests under `/api` to Express on `http://127.0.0.1:3000`. Docker is optional.
+
+| Configuration | Purpose |
+| --- | --- |
+| `client/.env` with `VITE_API_PROXY_TARGET` | Override the local Express target when using the Vite proxy |
+| `client/.env` with `VITE_API_BASE_URL` | Embed an explicit API origin at build time. Leave empty for same-origin `/api` requests |
+| Root `.env` with `CLIENT_ORIGIN` | Allow one exact cross-origin frontend origin with no trailing slash, such as `http://localhost:5173`. Leave empty when using the Vite proxy |
+| Shell `E2E_DATABASE_URL` | Point Playwright at a dedicated PostgreSQL test database with schema creation permission |
+
+Only public values belong in `VITE_*` variables. Keep the JWT signing secret and database credentials in the backend environment.
+
+### Sign in and manage requests
+
+- Members register with email and password, sign in, view their requests, and create or edit owned requests. The Overview shows counts and recent records for the loaded page. Search and filters also apply to the loaded page.
+- Administrators use the Administration view to review all requests, advance them one step at a time, and page through their audit timelines. Use the [database-only development procedure](#provision-a-development-administrator) to provision an administrator.
+- The React client keeps the access token in memory. After login it calls `GET /api/auth/me` to get the verified account ID and role. Signing out, refreshing, or receiving an authenticated 401 clears the session. Express enforces ownership, role and status rules on every protected call.
+
+### Screenshots
+
+Captured in Chromium during the end-to-end tests using requests written to an isolated PostgreSQL schema.
+
+[Desktop overview](client/docs/comptick-overview.png) · [Administrator audit history](client/docs/comptick-audit.png) · [Mobile sign-in](client/docs/comptick-mobile.png)
 
 ## Architecture
 
 ```text
-HTTP request → Express route → authentication and role checks
-            → controller and validation → service → repository → PostgreSQL
+React route → component → typed fetch client
+    → Vite proxy in development, or HTTPS API origin
+    → Express route → authentication and authorization
+    → controller and validation → service → repository → PostgreSQL
 ```
 
+- `client/src/` contains the React workspace. A shared fetch client attaches bearer tokens, and resource hooks cancel stale reads when the user switches pages.
 - `src/app.js` configures Express and the JSON API. `src/index.js` checks the database schema before opening the HTTP port.
 - `src/modules/auth/` handles account creation and login. Public registration accepts an omitted role or `USER`, and the SQL insert fixes the role to `USER`. Bcrypt hashes the password before persistence.
 - `src/middleware/` verifies the signed credential, loads the current active account and enforces route permissions. Login issues an HS256 JWT valid for one hour. Fetching the role from PostgreSQL on each protected request applies role changes and account deactivation to subsequent requests at the cost of one read.
@@ -41,6 +81,7 @@ Local base URL · `http://127.0.0.1:3000`
 | `GET /api/health` | Public | 200 with API liveness status and timestamp |
 | `POST /api/auth/register` | Public | 201 with account ID, email and role |
 | `POST /api/auth/login` | Public | 200 with JWT |
+| `GET /api/auth/me` | Authenticated | 200 with the active account ID and current role |
 | `GET /api/requests` | Authenticated | 200 with the caller’s requests, or all requests for an administrator |
 | `POST /api/requests` | Authenticated | 201 with the new `OPEN` request |
 | `PUT /api/requests/:id` | Request owner | 200 with updated title, description, category and priority |
@@ -108,7 +149,7 @@ curl -fsS "http://127.0.0.1:3000/api/requests/$REQUEST_ID/audits?page=1&limit=10
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-## Run locally
+## Run the backend
 
 Install Node.js 26 and PostgreSQL 14. Create an empty database and a PostgreSQL user with permission to create tables and related objects in its schema. Then run:
 
@@ -120,7 +161,7 @@ cp .env.example .env
 node -p 'require("node:crypto").randomBytes(32).toString("hex")'
 ```
 
-Put the generated value in `JWT_SECRET` and fill in the database connection settings in `.env`.
+Put the generated value in `JWT_SECRET` and fill in the database connection settings in the repository root’s `.env`. The backend requires at least 32 UTF-8 bytes and exits at startup if the secret is absent or too short.
 
 ```bash
 npm run migrate
@@ -136,7 +177,8 @@ Use `npm run dev` for automatic restart during development. Run migrations expli
 | `DB_HOST`, `DB_PORT` | PostgreSQL host and port, with port 5432 by default |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Target database and credentials |
 | `JWT_SECRET` | Random signing secret, at least 32 bytes |
-| `TEST_DATABASE_URL` | PostgreSQL connection URI for a dedicated test database |
+| `TEST_DATABASE_URL` | PostgreSQL connection URI for a dedicated backend test database |
+| `CLIENT_ORIGIN` | Optional exact frontend origin for cross-origin browser requests |
 
 ### Docker Compose
 
@@ -178,13 +220,36 @@ Wait for `pg_isready` to report that PostgreSQL is accepting connections before 
 
 With an existing PostgreSQL server, create a separate test database and set its connection URI in `.env.test`. The test role needs permission to create schemas in that database. A shell or CI value for `TEST_DATABASE_URL` takes precedence over the file. Integration suites create and remove randomly named schemas and apply the application migrations. `npm run test:unit` and `npm run lint` work without PostgreSQL.
 
-Use `npm run test:integration` for the HTTP suites. Node.js 26.13.0 and PostgreSQL 14.25 were used for local verification. The full run passed 33 tests across five suites. The checks include forced audit rollback, concurrent status changes, audit history access and ordering, ownership, pagination, malformed JSON, and authentication failures. A separate smoke check applied migrations twice to the original schema, preserved existing data, and started the API successfully.
+Use `npm run test:integration` for the HTTP suites. Node.js 26.13.0 and PostgreSQL 14.25 were used for local verification. The full run passed 35 tests across five suites. The checks include forced audit rollback, concurrent status changes, audit history access and ordering, ownership, pagination, malformed JSON, and authentication failures. A separate smoke check applied migrations twice to the original schema, preserved existing data, and started the API successfully.
+
+### Frontend checks
+
+From `client/`:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+Vitest and React Testing Library cover form validation, protected views, dashboard states, request mutations, administrator status changes and audit pagination. For the real browser workflow, install Chromium once with `npx playwright install chromium` and set `E2E_DATABASE_URL` to a dedicated PostgreSQL test database. Install the backend dependencies from the repository root before running:
+
+```bash
+npm run test:e2e
+```
+
+The runner creates a temporary schema, applies the backend migrations, provisions one test administrator, and starts Express and Vite on ports 4310 and 4317. It drops its schema at the end. Set `E2E_SCREENSHOTS=1` to regenerate the documentation screenshots using test data.
+
+## Deployment plan
+
+`npm run build` in `client/` produces `client/dist/`. For future Firebase Hosting, use that directory as the public directory and configure a catch-all rewrite to `/index.html` for React Router paths. Build with `VITE_API_BASE_URL` set to the separately hosted HTTPS API origin. On Express, set `CLIENT_ORIGIN` to the Firebase origin. Supply database credentials and the JWT signing secret through the backend host’s environment. Hosting and a cross-origin production deployment have yet to be verified.
 
 ## Limitations and next steps
 
 The API currently exposes a liveness check and stores audit history in PostgreSQL. Assignment, deletion and token refresh have no public endpoints. Login has no application-level rate limiting. The application and migrations share database credentials in the local Compose stack.
 
-Audit history uses offset pagination, so new status changes can shift entries between page loads.
+Request details open from a loaded list row because the API has no single-request read endpoint. Details are workspace state and have no shareable URL. Counts, search, and filters cover one page. Offset pagination can shift results when new rows are written. A focused next milestone is a tested server-side request search and filtered aggregate counts.
 
 ## Author
 

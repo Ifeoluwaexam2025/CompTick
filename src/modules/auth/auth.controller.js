@@ -20,4 +20,9 @@ async function login(req, res, next) {
     }
 }
 
-module.exports = { register, login };
+function currentUser(req, res) {
+    res.set('Cache-Control', 'no-store');
+    res.json({ id: req.user.id, role: req.user.role });
+}
+
+module.exports = { register, login, currentUser };
