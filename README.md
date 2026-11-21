@@ -2,31 +2,20 @@
 
 **Track requests. Manage progress. Resolve issues.**
 
-CompTick is a responsive React client for the Digital Cloud Service backend. Members submit, edit, and track their own service requests. Administrators review requests across the workspace, advance their status, and inspect the recorded audit trail.
+**[Live CompTick demo](https://comptick.web.app/)** · **[Live API health](https://comptick-api.onrender.com/api/health)** · **[Source on GitHub](https://github.com/Ifeoluwaexam2025/CompTick)**
 
-I built this project as an Information Technology Engineering portfolio project to practice full-stack development, relational data modeling, authorization and automated testing. [Digital Cloud Service on GitHub](https://github.com/Ifeoluwaexam2025/Digital-CloudService)
+CompTick is a deployed service request management application. Members submit, edit, and track their own requests. Administrators review requests across the workspace, advance their status, and inspect the audit trail.
 
-**Frontend** · React, TypeScript, Vite, React Router, CSS, Vitest, React Testing Library and Playwright.
+| Production layer | Stack |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, React Router and CSS on Firebase Hosting |
+| API | Node.js 26 LTS, Express 4, CommonJS, bcrypt and JWT on Render |
+| Database | Neon PostgreSQL |
+| Development and testing | Docker Compose, GitHub Actions, Jest, Supertest, Vitest, React Testing Library and Playwright |
 
-**Backend** · Node.js 26 LTS, Express 4, PostgreSQL, CommonJS, bcrypt, JWT, Jest, Supertest, Docker Compose and GitHub Actions. [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
+I built CompTick as an Information Technology Engineering portfolio project to practice full-stack development, relational data modeling, authorization, and automated testing. [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
 
-
-**[🚀 Live CompTick Demo](https://comptick.web.app/)** ·
-**[💻 Source Code](https://github.com/Ifeoluwaexam2025/Digital-CloudService)** ·
-**[API Health Check](https://comptick-api.onrender.com/api/health)**
-
-CompTick is a deployed full-stack service request management application.
-
-- **Frontend:** React, TypeScript and Firebase Hosting
-- **Backend:** Node.js, Express and Render
-- **Database:** Neon PostgreSQL
-- **Testing:** Jest, Supertest, Vitest and Playwright
-
-Users can register, create and manage service requests.
-Administrators can update request statuses and inspect audit history.
-
-The demo uses free-tier hosting, so the API may take longer to respond after inactivity.
-
+The Render API may take longer to respond after inactivity.
 
 ## Run CompTick locally
 
@@ -63,6 +52,8 @@ Captured in Chromium during the end-to-end tests using requests written to an is
 
 ## Architecture
 
+In production, Firebase Hosting serves the React build. The browser calls the Express API on Render over HTTPS. Express connects to Neon PostgreSQL for accounts, service requests, and audit history.
+
 ```text
 React route → component → typed fetch client
     → Vite proxy in development, or HTTPS API origin
@@ -92,6 +83,8 @@ Requests start at `OPEN`. An administrator can advance a request through `OPEN �
 
 ## API
 
+Production base URL · `https://comptick-api.onrender.com`
+
 Local base URL · `http://127.0.0.1:3000`
 
 | Method and path | Access | Success |
@@ -116,10 +109,10 @@ Errors have the shape `{"message":"Invalid credentials"}`. Common statuses are 4
 
 ### Example workflow
 
-Register a development account.
+These examples use the local API and a disposable development account. Register the account once, then reuse it for later runs.
 
 ```bash
-curl -sS http://127.0.0.1:3000/api/auth/register \
+curl -fsS http://127.0.0.1:3000/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"email":"demo@example.com","password":"example-password"}'
 ```
@@ -134,24 +127,27 @@ Example response.
 }
 ```
 
-Log in, extract the JWT, and create a request.
+Log in and keep the JWT in your shell. Create a request and extract the UUID from the API response.
 
 ```bash
-TOKEN=$(curl -fsS http://127.0.0.1:3000/api/auth/login \
+LOGIN_RESPONSE=$(curl -fsS http://127.0.0.1:3000/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"demo@example.com","password":"example-password"}' |
+  -d '{"email":"demo@example.com","password":"example-password"}') &&
+TOKEN=$(printf '%s' "$LOGIN_RESPONSE" |
   node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).token')
 
-curl -fsS http://127.0.0.1:3000/api/requests \
+REQUEST_RESPONSE=$(curl -fsS http://127.0.0.1:3000/api/requests \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Portal access","description":"Cannot sign in","category":"ACCESS","priority":"HIGH"}'
+  -d '{"title":"Portal access","description":"Cannot sign in","category":"ACCESS","priority":"HIGH"}') &&
+REQUEST_ID=$(printf '%s' "$REQUEST_RESPONSE" |
+  node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).id')
 
 curl -fsS 'http://127.0.0.1:3000/api/requests?page=1&limit=10' \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-An administrator can send the following request using an authorized token and an existing request UUID.
+A newly created request is `OPEN`. In the same shell, set `ADMIN_TOKEN` to the JWT returned by logging in as a [development administrator](#provision-a-development-administrator). Use `REQUEST_ID` from the creation response to advance the request to `IN_PROGRESS`.
 
 ```bash
 curl -fsS -X PATCH "http://127.0.0.1:3000/api/requests/$REQUEST_ID/status" \
@@ -172,8 +168,8 @@ curl -fsS "http://127.0.0.1:3000/api/requests/$REQUEST_ID/audits?page=1&limit=10
 Install Node.js 26 and PostgreSQL 14. Create an empty database and a PostgreSQL user with permission to create tables and related objects in its schema. Then run:
 
 ```bash
-git clone https://github.com/Ifeoluwaexam2025/Digital-CloudService.git
-cd Digital-CloudService
+git clone https://github.com/Ifeoluwaexam2025/CompTick.git
+cd CompTick
 npm ci
 cp .env.example .env
 node -p 'require("node:crypto").randomBytes(32).toString("hex")'
@@ -271,11 +267,11 @@ npm run test:e2e
 
 The runner creates a temporary schema, applies the backend migrations, provisions one test administrator, and starts Express and Vite on ports 4310 and 4317. It drops its schema at the end. Set `E2E_SCREENSHOTS=1` to regenerate the documentation screenshots using test data.
 
-## Deploy the frontend to Firebase Hosting
+## Production deployment
+
+### Firebase Hosting
 
 The production build uses the public Render API at `https://comptick-api.onrender.com`, configured in `client/.env.production`. Firebase Hosting serves `client/dist/` and rewrites client-side routes to `index.html`. The selected Firebase project is `comptick`, and its Hosting origin is `https://comptick.web.app`.
-
-In the Render backend service’s **Environment** tab, set `CLIENT_ORIGIN=https://comptick.web.app` and redeploy the backend. The API allows one exact origin, so use the `web.app` URL to sign in. Keep the database URL and signing secret in the Render backend environment.
 
 From the repository root, run:
 
@@ -285,6 +281,14 @@ npx firebase-tools deploy --only hosting --project comptick
 ```
 
 If the Firebase CLI requests sign-in, run `npx firebase-tools login`. After deploying, open `https://comptick.web.app` and test sign-in. For local development, `npm run dev` inside `client/` still uses the Vite proxy configured for the local API.
+
+### Render and Neon PostgreSQL
+
+Render runs the Express server with `npm start`. Its health endpoint is available at [`/api/health`](https://comptick-api.onrender.com/api/health). The server checks that the application schema exists before it starts listening.
+
+Set `CLIENT_ORIGIN=https://comptick.web.app` in the Render backend service’s **Environment** tab and redeploy the backend when that setting changes. The API allows one exact frontend origin, so use the `web.app` URL to sign in.
+
+Keep the pooled Neon `DATABASE_URL` and `JWT_SECRET` in Render’s backend environment. Use the direct `DATABASE_URL_UNPOOLED` for schema migrations as described in [Neon Postgres](#neon-postgres). The Firebase build uses the public API URL.
 
 ## Limitations and next steps
 
