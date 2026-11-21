@@ -10,6 +10,24 @@ I built this project as an Information Technology Engineering portfolio project 
 
 **Backend** · Node.js 26 LTS, Express 4, PostgreSQL, CommonJS, bcrypt, JWT, Jest, Supertest, Docker Compose and GitHub Actions. [Node.js release schedule](https://nodejs.org/en/about/previous-releases)
 
+
+**[🚀 Live CompTick Demo](https://comptick.web.app/)** ·
+**[💻 Source Code](https://github.com/Ifeoluwaexam2025/Digital-CloudService)** ·
+**[API Health Check](https://comptick-api.onrender.com/api/health)**
+
+CompTick is a deployed full-stack service request management application.
+
+- **Frontend:** React, TypeScript and Firebase Hosting
+- **Backend:** Node.js, Express and Render
+- **Database:** Neon PostgreSQL
+- **Testing:** Jest, Supertest, Vitest and Playwright
+
+Users can register, create and manage service requests.
+Administrators can update request statuses and inspect audit history.
+
+The demo uses free-tier hosting, so the API may take longer to respond after inactivity.
+
+
 ## Run CompTick locally
 
 Install Node.js 26, npm and PostgreSQL. The [backend setup](#run-the-backend) explains how to create the database, configure a JWT signing secret in the repository root’s `.env`, and apply migrations. Start the API on port 3000 with `npm start` in the repository root. In another terminal, run:
@@ -253,9 +271,20 @@ npm run test:e2e
 
 The runner creates a temporary schema, applies the backend migrations, provisions one test administrator, and starts Express and Vite on ports 4310 and 4317. It drops its schema at the end. Set `E2E_SCREENSHOTS=1` to regenerate the documentation screenshots using test data.
 
-## Deployment plan
+## Deploy the frontend to Firebase Hosting
 
-`npm run build` in `client/` produces `client/dist/`. For future Firebase Hosting, use that directory as the public directory and configure a catch-all rewrite to `/index.html` for React Router paths. Build with `VITE_API_BASE_URL` set to the separately hosted HTTPS API origin. On Express, set `CLIENT_ORIGIN` to the Firebase origin. Supply database credentials and the JWT signing secret through the backend host’s environment. Hosting and a cross-origin production deployment have yet to be verified.
+The production build uses the public Render API at `https://comptick-api.onrender.com`, configured in `client/.env.production`. Firebase Hosting serves `client/dist/` and rewrites client-side routes to `index.html`. The selected Firebase project is `comptick`, and its Hosting origin is `https://comptick.web.app`.
+
+In the Render backend service’s **Environment** tab, set `CLIENT_ORIGIN=https://comptick.web.app` and redeploy the backend. The API allows one exact origin, so use the `web.app` URL to sign in. Keep the database URL and signing secret in the Render backend environment.
+
+From the repository root, run:
+
+```bash
+npm run build
+npx firebase-tools deploy --only hosting --project comptick
+```
+
+If the Firebase CLI requests sign-in, run `npx firebase-tools login`. After deploying, open `https://comptick.web.app` and test sign-in. For local development, `npm run dev` inside `client/` still uses the Vite proxy configured for the local API.
 
 ## Limitations and next steps
 
