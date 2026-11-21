@@ -180,6 +180,18 @@ Use `npm run dev` for automatic restart during development. Run migrations expli
 | `TEST_DATABASE_URL` | PostgreSQL connection URI for a dedicated backend test database |
 | `CLIENT_ORIGIN` | Optional exact frontend origin for cross-origin browser requests |
 
+### Neon Postgres
+
+Run `npx neon@latest deploy` from the linked repository root to refresh the server-side connection variables. Express uses the pooled `DATABASE_URL`. The migration command prefers `DATABASE_URL_UNPOOLED`, which connects directly. Process environment values take precedence over `.env.local` and then `.env`. Keep the URLs and `JWT_SECRET` out of client configuration.
+
+```bash
+npm run build
+npm run migrate
+npm start
+```
+
+For local PostgreSQL, leave both URL variables unset or empty and use the `DB_*` settings. CompTick’s existing accounts and JWT workflow are managed by Express. Applying schema migrations on a Neon branch creates or updates tables there. Moving existing data to that branch is a separate operation.
+
 ### Docker Compose
 
 Copy `.env.example` to `.env`, set a database user, a database name, a database password and a random JWT secret, then run:

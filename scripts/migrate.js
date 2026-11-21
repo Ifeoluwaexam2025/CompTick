@@ -1,3 +1,9 @@
+require('../src/config/env');
+
+if (process.env.DATABASE_URL_UNPOOLED) {
+    process.env.DATABASE_URL = process.env.DATABASE_URL_UNPOOLED;
+}
+
 const migrate = require('../src/config/migrate');
 const db = require('../src/config/database');
 
