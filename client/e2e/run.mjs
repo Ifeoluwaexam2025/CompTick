@@ -21,6 +21,8 @@ const frontend = fileURLToPath(new URL('../', import.meta.url));
 
 const env = {
     ...process.env,
+    DATABASE_URL: '',
+    DATABASE_URL_UNPOOLED: '',
     DB_HOST: url.hostname,
     DB_PORT: url.port || '5432',
     DB_NAME: decodeURIComponent(url.pathname.slice(1)),
